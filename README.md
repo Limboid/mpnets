@@ -1,5 +1,9 @@
 # Self Organizing Multi-Paradigm Networks
 
+:construction: **This repository is under construction.** :construction: Stable release coming this Summer 2022.
+
+Want to contribute? Check out the GitHub container repository [Limboid/the-artificial-ecosystem](https://github.com/Limboid/the-artificial-ecosystem) for this project.
+
 TODO
 - make single dynamic-sized linear cell
 - make recurrent network with arbitrary internal structure and pooling functions (full list, random select, max, min, mean, etc)

@@ -1,88 +1,83 @@
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, TypeVar
 
-from .types import Tensor, TensorSpec
-from .backend import BACKEND, Backend
-from mpnets import backend
+import torch
+from torch import Tensor
+import pytorch_lightning as pl
+
+
+class Node(dataclass):
+    size: torch.Size
+    name: str = None
+    pooling_function: Callable[[Tensor], Tensor] = torch.sum
+    activation_function: Callable[[Tensor], Tensor] = lambda x: x
+    initialization_function: Callable[[torch.Size], Tensor] = torch.zeros
 
 
 class Connection(dataclass):
 
-    srcs: List[str]
-    dsts: List[str]
+    srcs: List[Node]
+    dsts: List[Node]
     fn: Callable[[List[Tensor]], List[Tensor]]
 
     @property
     def trainable_params(self) -> List[Tensor]:
-        if hasattr(self.fn, 'trainable_params'):
-            return self.fn.trainable_params
+        if hasattr(self.fn, 'parameters'):
+            return self.fn.parameters()
         else:
             return []
 
 
-class MPNet(dataclass):
+class MPNet(dataclass, pl.LightningModule):
 
-    node_specs: Dict[str, TensorSpec]  # recurrent state storage
-    # functions which may include trainable parameters
+    nodes: List[Node]
     connections: List[Connection]
 
-    connection_optimizer: Optimizer
-    parameter_optimizer: Optimizer
-
-    built: bool = False
-    vals: Dict[str, Tensor] = {}
-    grads: Dict[str, Tensor] = {}
+    # TODO  store the state optimizer in the state dict
+    state_optimizer_fn: Callable[[], torch.optim.Optimizer]
+    # ptl stores the model's optimizer in `.optimizer()` parameter_optimizer: torch.optim.Optimizer
 
     @property
-    def trainable_params(self) -> List[Tensor]:
-        params = []
+    def parameters(self) -> List[Tensor]:
+        return [param for connection in self.connections
+                for param in connection.parameters()]
+
+    def __init__(self, nodes: List[Node], connections: List[Connection]):
+        super().__init__()
+        self.nodes = nodes
+        self.connections = connections
+
+    # TODO: implement pl.LightningModule.forward and other methods
+
+    @property
+    def _initial_state(self) -> Dict[Node, Tensor]:
+        return {node: node.initialization_function(node.size)
+                for node in self.nodes}
+
+    def _update(self, vals: Dict[Node, Tensor]):
+
+        # clear gradients
+
+        # forward pass
+        vals = self._forward(vals)
+
+        # backward pass on state variables
+        for node in self.nodes:
+            # TODO
+            vals[node]._grad += vals[node].backward()
+
+        # backward pass on trainable parameters
+
+    def _forward(self, vals: Dict[Node, Tensor]) -> Dict[Node, Tensor]:
+        # compute buckets
+        buckets = {node: [] for node in self.nodes}
         for connection in self.connections:
-            params.extend(connection.trainable_params)
-        return params
-
-    def build(self):
-        for name, spec in self.node_specs.items():
-            self.vals[name] = Tensor.zeros(spec.shape, spec.dtype)
-            self.grads[name] = Tensor.zeros(spec.shape, spec.dtype)
-
-    def update(self):
-        if not self.built:
-            self.build()
-            self.built = True
-
-        if backend.BACKEND == backend.Backend.tf:
-            prev_vals = self.vals.copy()
-            trainable_params = self.trainable_params
-            with tf.GradientTape() as tape:
-                self.forward()
-            # grads through all connections
-            connection_grads, param_grads = tape.gradient(
-                self.vals, (prev_vals, trainable_params))
-            for name, grad in connection_grads.items():
-                self.grads[name] += grad
-            # grads feeding into weights
-
-        elif backend.BACKEND == backend.Backend.torch:
-            TODO()
-        elif backend.BACKEND == backend.Backend.np:
-            raise NotImplementedError(
-                'np backend does not support gradient propagation')
-        else:
-            raise NotImplementedError(f'unknown backend {BACKEND}')
-
-    def forward():
-        for connection in self.connections:
-            srcs = [getattr(self, src) for src in connection.srcs]
-            dst = getattr(self, connection.dsts[0])
-            dst.data = connection.fn(srcs)
-
-    def __getattribute__(self, __name: str) -> Any:
-        try:
-            super().__getattribute__(__name)
-        except AttributeError:
-            if __name in self.vals:
-                return self.vals[__name]
-        else:
-            raise AttributeError(f"{__name} is not a valid attribute")
-
-# TODO: just use a single framework (like torch for developer convenience)
+            inputs = [vals[src] for src in connection.srcs]
+            outputs = connection.fn(inputs)
+            for output, dst in zip(outputs, connection.dsts):
+                buckets[dst].append(output)
+        # pool bucket values and apply activation function
+        for node in self.nodes:
+            vals[node] = node.activation_function(
+                node.pooling_function(buckets[node]))
+        return vals
