@@ -9,3 +9,8 @@ def is_valid_glom_string(obj, glom_str):
         return True
     except:
         return False
+
+
+@export
+def error(msg):
+    raise Exception(msg)
