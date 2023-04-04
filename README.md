@@ -1,0 +1,11 @@
+[] custom node types (not just dense, but also convolutional)
+[x] custom pooling operator (sum, random, mean, max, min)
+[x] add dropout
+[x] add BN
+[] add parameter to disable spiking
+[] supporta named `reward` parameter
+[] the larger network should support other node types such as
+    - https://github.com/ridgerchu/SpikeGPT
+    - https://github.com/BlinkDL/RWKV-LM
+    - my self organizing maps library, reimplemented in pytorch. Actually just implement teh unsupervized library
+    - 

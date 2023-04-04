@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "mpnets"
+version = "0.1.0"
+description = ""
+authors = ["Jacob Valdez"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pyparsing = "^3.0.9"
+glom = "^23.3.0"
+python-exports = "^1.0.0"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.22.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
