@@ -9,3 +9,5 @@
     - https://github.com/BlinkDL/RWKV-LM
     - my self organizing maps library, reimplemented in pytorch. Actually just implement teh unsupervized library
     - 
+[] Forewar-forward learnign
+[] small circuit local feedback alignment

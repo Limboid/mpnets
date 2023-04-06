@@ -2,6 +2,8 @@ import itertools
 from exports import export
 from pyparsing import *
 
+from mpnets.utils.misc import unsqueeze_list
+
 # utils
 whitespace_until_end_of_line = Regex(r"[\s]*$")
 
@@ -50,17 +52,37 @@ def ensure_scope(node, scope):
     raise ValueError(f"Invalid node name: {node}")
 
 
-def extract_links(parsed_doc):
-    links = []
+NODE_REF = str | tuple[str, ...] | list[str] | set[str]
+EDGE_CHAIN = list[NODE_REF] | tuple[NODE_REF, ...]
+ADJACENCY_LIST = list[EDGE_CHAIN] | tuple[EDGE_CHAIN, ...]
+
+
+def extract_adjacency_list(parsed_doc) -> ADJACENCY_LIST:
+    adjacency_list = []
     for line in parsed_doc:
         if "edges" in line:
+            edge_chain = []
             for i, (srcs, dsts) in enumerate(zip(line["edges"][0:], line["edges"][1:])):
-                default_scope = "prev" if i == 0 else "current"
-                for src, dst in itertools.product(srcs, dsts):
-                    src = ensure_scope(src, default_scope)
-                    dst = ensure_scope(dst, default_scope)
-                    links.append((src, dst))
-    return links
+                srcs = unsqueeze_list(srcs)
+                dsts = unsqueeze_list(dsts)
+                if i == 0:
+                    edge_chain.append(srcs)
+                edge_chain.append(dsts)
+            adjacency_list.append(edge_chain)
+    return adjacency_list
+
+
+## def extract_links(parsed_doc) -> ADJACENCY_LIST:
+##     links = []
+##     for line in parsed_doc:
+##         if "edges" in line:
+##             for i, (srcs, dsts) in enumerate(zip(line["edges"][0:], line ["edges"][1:])):
+##                 default_scope = "prev" if i == 0 else "current"
+##                 for src, dst in itertools.product(srcs, dsts):
+##                     src = ensure_scope(src, default_scope)
+##                     dst = ensure_scope(dst, default_scope)
+##                     links.append((src, dst))
+##     return links
 
 
 @export
@@ -75,5 +97,5 @@ def parse(text=None, path=None):
             text = f.read()
 
     parse_tree = document.parseString(text)
-    links = extract_links(parse_tree)
-    return links
+    adjacency_list = extract_adjacency_list(parse_tree)
+    return adjacency_list

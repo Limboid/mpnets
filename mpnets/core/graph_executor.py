@@ -1,3 +1,5 @@
+import itertools
+import re
 import attr
 from typing import Any, Callable
 
@@ -5,32 +7,54 @@ from exports import export
 import glom
 
 from mpnets.utils.misc import is_valid_glom_string
-from mpnets.utils.parsing import parse
+from mpnets.utils.parsing import ADJACENCY_LIST, ensure_scope, parse
 
 
 @export
 @attr.s
 class GraphExecutor:
-    nodes: list[Callable] = attr.ib()
-    connectivity: str = attr.ib(default=None)
-    links: list[tuple[str, str]] = attr.ib(default=None)
+    nodes: dict[Callable] | list[Callable] | tuple[Callable, ...] = attr.ib()
+    connectivity: str = attr.ib(default=None)  # only used for string initialization
+    adjacency_list: ADJACENCY_LIST = attr.ib(default=None)
     initial_state: dict[str, dict[str, Any]] = attr.ib(default=None)
     _ready = attr.ib(init=False, default=False)
 
     @attr.s.on_init
     def __post_init__(self):
         assert (
-            self.connectivity is not None or self.links is not None
+            self.connectivity is not None or self.adjacency_list is not None
         ), 'Must provide either "connectivity" or "links"'
         assert not (
-            self.connectivity is not None and self.links is not None
+            self.connectivity is not None and self.adjacency_list is not None
         ), 'Must provide either "connectivity" or "links", not both'
-        if self.connectivity is not None:
-            self.links = parse(self.links)
+
+        # convert nodes to dict if supplied as list or tuple
+        if isinstance(self.nodes, (list, tuple)):
+            self.nodes = {node.__name__: node for node in self.nodes}
+
+        # parse connectivity string if provided
+        if self.adjacency_list is None and self.connectivity is not None:
+            self.adjacency_list = parse(self.adjacency_list)
+
+        # flatten adjacency list
+        _adjacency_list = {}
+        for edge_chain in self.adjacency_list:
+            for i, (srcs, dsts) in enumerate(zip(edge_chain[0:], edge_chain[1:])):
+                default_scope = "prev" if i == 0 else "current"
+                for src, dst in itertools.product(srcs, dsts):
+                    # create pynodes and update reference, if necesary
+                    self._maybe_create_pynode(src)
+                    self._maybe_create_pynode(dst)
+                    # ensure scope defaults to "prev" for the first item or "current" for the rest
+                    src = ensure_scope(src, default_scope)
+                    dst = ensure_scope(dst, default_scope)
+                    _adjacency_list.append((src, dst))
+        self.adjacency_list = _adjacency_list
+
         self.reset()
 
     def reset(self):
-        self.prev = (self.initial_state or {node: 0 for node in self.nodes}).copy()
+        self.prev = (self.initial_state or {node: 0.0 for node in self.nodes}).copy()
         self.current_outputs = {}
         self._ready = True
 
@@ -45,13 +69,9 @@ class GraphExecutor:
 
         # Build dictionaries of arguments for each node
         all_node_args = {}
-        for src, dst in self.links:
-            # if src doesn't begin with "prev" or "current", add "current." to the front
-            src_splits = src.split(".")
-            if len(src_splits) == 0:
-                raise ValueError(f"Invalid source: {src}")
-            if src_splits[0] not in ["prev", "current"]:
-                src = "current." + src
+        for src, dst in self.adjacency_list:
+            # TODO: set the empty arg name to DEFAULT. Then determine JIT how to interpret DEFAULT
+
             # if dst doesn't have an arg name, find the next free position
             dst_splits = dst.split(".")
             if len(dst_splits) == 0:
@@ -162,3 +182,19 @@ class GraphExecutor:
             }
         fn = self.nodes[dst]
         state["current"][dst] = fn(*posargs, **kwargs)
+
+    def _maybe_create_pynode(self, name):
+        if name in self.nodes:
+            return
+        # see if name is in the locals or gloabls
+        if name in self.create_pynode_scope:
+            self.nodes[name] = self.create_pynode_scope[name]
+        # see if name is a function call
+        if re.match(r"\(.*\)", name):
+            try:
+                obj = eval(name)
+                if obj is not None:
+                    self.nodes[name] = obj
+            except:
+                pass
+        return

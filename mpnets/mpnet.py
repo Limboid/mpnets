@@ -1,83 +1,53 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, TypeVar
+from mpnets.core.graph_executor import GraphExecutor
+from mpnets.utils.parsing import ADJACENCY_LIST
 
 import torch
+import torch.nn as nn
 from torch import Tensor
 import pytorch_lightning as pl
 
 
-class Node(dataclass):
-    size: torch.Size
-    name: str = None
-    pooling_function: Callable[[Tensor], Tensor] = torch.sum
-    activation_function: Callable[[Tensor], Tensor] = lambda x: x
-    initialization_function: Callable[[torch.Size], Tensor] = torch.zeros
+NODE = str | Callable
+EDGE = tuple[NODE, NODE] | list
+EDGE_CHAIN = list
 
 
-class Connection(dataclass):
+class MPNet(pl.LightningModule, GraphExecutor):
+    def __init__(
+        self,
+        nodes: list[Callable],
+        connections: str = None,
+        adjacency_list: ADJACENCY_LIST = None,
+        **hparams
+    ):
+        super().__init__(
+            nodes=nodes,
+            connectivity=connections,
+            adjacency_list=adjacency_list,
+        )
 
-    srcs: List[Node]
-    dsts: List[Node]
-    fn: Callable[[List[Tensor]], List[Tensor]]
+    def forward(self, batch: dict[str, Tensor], **kwargs):
+        pass
 
-    @property
-    def trainable_params(self) -> List[Tensor]:
-        if hasattr(self.fn, 'parameters'):
-            return self.fn.parameters()
-        else:
-            return []
+    def add_loss(self, name, loss):
+        # losses map to `loss_nodes` in the graph
+        # there are multiple, multidimensional losses with varing network coverage
+        if name not in self.loss_nodes:
+            self.loss_nodes[name] = loss
 
-
-class MPNet(dataclass, pl.LightningModule):
-
-    nodes: List[Node]
-    connections: List[Connection]
-
-    # TODO  store the state optimizer in the state dict
-    state_optimizer_fn: Callable[[], torch.optim.Optimizer]
-    # ptl stores the model's optimizer in `.optimizer()` parameter_optimizer: torch.optim.Optimizer
-
-    @property
-    def parameters(self) -> List[Tensor]:
-        return [param for connection in self.connections
-                for param in connection.parameters()]
-
-    def __init__(self, nodes: List[Node], connections: List[Connection]):
-        super().__init__()
-        self.nodes = nodes
-        self.connections = connections
-
-    # TODO: implement pl.LightningModule.forward and other methods
+    def train(self, batch: dict[str, Tensor], **kwargs):
+        pass
 
     @property
-    def _initial_state(self) -> Dict[Node, Tensor]:
-        return {node: node.initialization_function(node.size)
-                for node in self.nodes}
+    def loss_nodes(self):
+        ...
 
-    def _update(self, vals: Dict[Node, Tensor]):
+    @property
+    def general_nodes(self):
+        ...
 
-        # clear gradients
-
-        # forward pass
-        vals = self._forward(vals)
-
-        # backward pass on state variables
-        for node in self.nodes:
-            # TODO
-            vals[node]._grad += vals[node].backward()
-
-        # backward pass on trainable parameters
-
-    def _forward(self, vals: Dict[Node, Tensor]) -> Dict[Node, Tensor]:
-        # compute buckets
-        buckets = {node: [] for node in self.nodes}
-        for connection in self.connections:
-            inputs = [vals[src] for src in connection.srcs]
-            outputs = connection.fn(inputs)
-            for output, dst in zip(outputs, connection.dsts):
-                buckets[dst].append(output)
-        # pool bucket values and apply activation function
-        for node in self.nodes:
-            vals[node] = node.activation_function(
-                node.pooling_function(buckets[node]))
-        return vals
+    @property
+    def special_nodes(self):
+        ...

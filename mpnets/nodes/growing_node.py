@@ -1,5 +1,6 @@
 import logging
 from typing import Callable
+from mpnets.nodes.node import Node
 from mpnets.utils.misc import error
 import torch
 import torch.nn as nn
@@ -7,7 +8,7 @@ import torch.optim as optim
 from torch import Tensor
 
 
-class GrowingLayer(nn.Module):
+class GrowingCell(nn.Module, Node):
 
     # hparams
     lr = 0.01
