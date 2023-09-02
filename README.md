@@ -11,3 +11,19 @@
     - 
 [] Forewar-forward learnign
 [] small circuit local feedback alignment
+
+---
+
+```python
+MPNet(
+    nodes={
+        'nodeA': Node((64,64,DIMS), ...),
+        'nodeB': nodeB := Node((16,16,DIMS), ...),
+    },
+    edges=[
+        ('nodeA', 'nodeB'),
+        Edge('nodeA', 'nodeB', bidirectional=True),
+        SparseEdge(nodeB, 'nodeA.param1', sparsity=0.1,)
+    ]
+)
+```

@@ -14,7 +14,7 @@ EDGE = tuple[NODE, NODE] | list
 EDGE_CHAIN = list
 
 
-class MPNet(pl.LightningModule, GraphExecutor):
+class MPNet(pl.LightningModule):
     def __init__(
         self,
         nodes: list[Callable],
@@ -22,7 +22,7 @@ class MPNet(pl.LightningModule, GraphExecutor):
         adjacency_list: ADJACENCY_LIST = None,
         **hparams
     ):
-        super().__init__(
+        self.graph = GraphExecutor(
             nodes=nodes,
             connectivity=connections,
             adjacency_list=adjacency_list,
